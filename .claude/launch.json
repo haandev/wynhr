@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "wynhr-app",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd app && exec ./node_modules/.bin/vite --port 5180 --strictPort"],
+      "port": 5180
+    }
+  ]
+}
