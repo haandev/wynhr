@@ -5,8 +5,8 @@
 |---|---|---|
 | Bug | 12 | 1 kısmi (schedule trigger, webhook ile aşıldı) |
 | Eksik özellik | 11 | 0 |
-| Keşfedilebilirlik | 14 | 0 |
-| **Toplam** | **37** | **0 tam + 1 kısmi** |
+| Keşfedilebilirlik | 15 | 0 |
+| **Toplam** | **38** | **0 tam + 1 kısmi** |
 
 Durum (2026-11-16): Backend (base `wynhr`: 4 space, şema, 300+ erişim kuralı, 20+ named query, 4 flow) kuruldu ve rol bazlı test edildi. Uygulama (`app/`, React + `@wyndbase/sdk` + typegen): self-servis profil/izin, onay inbox'ı (kanal push + toast), org şeması, raporlar (CSV/XLSX/PDF, her export audit log'da), HR yönetimi (org yapısı + `auth.teams` ile hibrit departman ağacı, PTO politikaları/türleri, tatiller, tahakkuk/yıl sonu, bakiye düzeltme, işe alım), yönetici onay yetkisinin süreli devri (authority delegation, Inbox ekranından ver/geri al/reddet). Tümü tarayıcıda rol bazlı denendi. Canlı: https://wynhr.pages.dev (Cloudflare Pages).
 
@@ -386,5 +386,16 @@ Durum (2026-11-16): Backend (base `wynhr`: 4 space, şema, 300+ erişim kuralı,
 - **Sonuç:** Kullanıcı sorunca baktım: `sdk-getting-started` React için `WyndbaseProvider`'ı anlatıyor; altındaki `useQuery`/`useSuspenseQuery` SDK'nın kendi `queryClient` cache'ini `QueryClientProvider` gerekmeden okuyor. `sdk-queries`: `useQuery(sdk.query.shop.listOverdue({ days: 30 }))`, `useMutation(sdk.mutation.shop.shipOrder())`. `sdk-realtime`: `useQuery(sdk.query.x().live())`, yani sorgu sunucuda değişince kendiliğinden tazeleniyor. Kaçırdıklarım: (1) cache yok; aynı sorgu (ör. `core.directory`) her bileşende ayrı çekiliyor; (2) mutasyondan sonra ekranlar elle `reload()` ile tazeleniyor ve bir kısmı hiç tazelenmiyor (başka bir kullanıcının onayı Time off ekranına sayfa yenilenmeden yansımıyor); (3) live query hiç kullanılmadı; (4) yükleme/hata durumları her sayfada elle.
 - **Sonraki denemeler:** Yok.
 - **Çözüm / Workaround:** Uygulama çalışıyor, ama SDK'nın idiomatik yolu bu değil. Geçiş: `@tanstack/react-query` + `WyndbaseProvider`, `useLoad` → `useQuery(wyndbase.query…())`, değişebilen ekranlarda `.live()`, mutasyonlar `useMutation`.
-- **Durum:** Workaround ile çözüldü (kullanıcı kararı bekliyor: geçiş yapılsın mı)
+- **Durum:** Çözüldü
+- **Geçiş (kullanıcı onayıyla, live hariç):** `@tanstack/react-query` + `WyndbaseProvider` (`main.tsx`). 45 `useLoad` çağrısı → `useQuery(wyndbase.query.<space>.<name>(params))`; parametreler sorgu anahtarında olduğu için deps listesine gerek kalmadı. Koşullu sorgular `useQuery({ ...wyndbase.query.x(p).options(), enabled })`; typegen'in tipleyemediği iki NQ (`employeeHistory`, `adminDepartments`) için `asQuery<T>()` cast'i. 17 elle `reload()` silindi; yerine her başarılı yazmadan sonra `queryClient.invalidateQueries()`. Doğrulama: profilde telefon ekle/sil ekranı kendiliğinden tazeledi. React 18'de çalışıyor (SDK'nın `react` peer'ı `^19` diyor, ama provider React 19'a özel API kullanmıyor).
 - **Öneri:** "Building an application with the SDK" makalesi (ajanlara gösterilen giriş noktası) çatı seçimini ilk adım yapsın: "React kullanıyorsan `WyndbaseProvider` + `useQuery(sdk.query…())` + `.live()`; çatısız kullanıyorsan `QueryObserver`". Şu an React yolu tek cümle ve iki link uzağında; doğrudan örnek olarak makalede olmalı. Ayrıca typegen bir React projesinde `@tanstack/react-query` eksikse bunu söyleyebilir.
+
+## WyndBase devtools: documented under the workspace name, and its one real dependency is hidden in a 16-entry peer list
+- **Görev:** Kullanıcı istedi: uygulamaya WyndBase devtools eklemek.
+- **Kategori:** Keşfedilebilirlik
+- **İlk deneme:** `sdk-getting-started` makalesindeki örnek: `import { WyndbaseDevtools } from '@wyndb/sdk/devtools'`, `<WyndbaseDevtools client={wyndbase.queryClient} />`.
+- **Sonuç:** Paket adı yanlış: yayınlanan paket `@wyndbase/sdk`, makale monorepo içindeki `@wyndb/sdk` adını kullanıyor. Başta tek bir cümleyle "dışarıda `@wyndbase/sdk` yazın" deniyor, ama örneklerin hepsi iç adla. `package.json` `exports` içinde `./devtools`'u buldum. `devtools.js` `@tanstack/react-query-devtools`'u dinamik import ediyor; bu paket kurulu değilse panel açılmaz. SDK'nın `peerDependencies` listesinde 16 paket var (elysia, aws-sdk, MCP server, simplewebauthn…); hangisinin tarayıcı uygulaması için gerçekten gerektiği belli değil. `sdk` prop'u (Realtime ve Session sekmeleri) makalede yok, sadece `.d.ts`'de var.
+- **Sonraki denemeler:** `bun add @tanstack/react-query-devtools`, `<WyndbaseDevtools client={wyndbase.queryClient} sdk={wyndbase} />` (`WyndbaseProvider` içinde).
+- **Çözüm / Workaround:** Çalıştı: sağ altta logo, Queries (17 sorgu, anahtarlar `["wynhr","wql",{…query:"pto.balances"}]`), Mutations, Realtime ve Session sekmeleri. Production build'de varsayılan olarak boş render ediliyor.
+- **Durum:** Çözüldü
+- **Öneri:** (a) Örnekleri yayınlanan adla (`@wyndbase/sdk/...`) yazın ya da sunucunun `/npm` registry'sine göre yeniden yazın. (b) Devtools bölümü `@tanstack/react-query-devtools` gerektiğini ve `sdk` prop'unu söylesin. (c) Sunucu tarafı peer'ları (elysia, aws-sdk, MCP…) `peerDependenciesMeta` ile optional işaretleyin; tarayıcı uygulamasının ihtiyacı olanlar (`@tanstack/query-core`, React için `@tanstack/react-query`, devtools için `@tanstack/react-query-devtools`) ayrıca belgelensin.
